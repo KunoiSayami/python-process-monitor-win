@@ -23,11 +23,15 @@ import logging
 import os
 import signal
 import sys
-from dataclasses import dataclass
 from signal import SIGINT
+import subprocess
 
 import aiosqlite
+import aiohttp
+import aiofiles
 import psutil
+
+from custom_types import TaskControl, RemoteVersion
 
 logger = logging.getLogger('statistics')
 logger.setLevel(logging.DEBUG)
@@ -36,12 +40,6 @@ file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s'))
 logger.addHandler(file_handler)
 
-@dataclass
-class TaskControl:
-    task: asyncio.Task
-
-    def __call__(self, *args) -> None:
-        self.task.cancel()
 
 async def main() -> None:
     with open('.pid', 'w') as fout:
@@ -64,6 +62,19 @@ async def init() -> None:
                             );''')
             await db.commit()
         logger.info('Initialize successfully')
+
+
+async def update_self(remote_url: str) -> None:
+    async with aiofiles.open('app.version') as fin:
+        current_version = await fin.read()
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            async with session.get(remote_url) as rep:
+                v = RemoteVersion(await rep.json())
+                if v.version != current_version:
+                    await v.download(session, 'monitor.py')
+                if v.need_restart:
+                    await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
+
 
 async def boostrap_main() -> None:
     await init()
@@ -99,10 +110,17 @@ async def monitor(init: bool=False) -> None:
     await conn.commit()
     await conn.close()
 
+def kill_proc() -> None:
+    with open('.pid') as fin:
+        os.kill(int(fin.read()), 2)
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == 'stop':
-        with open('.pid') as fin:
-            os.kill(int(fin.read()), 2)
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'stop':
+            kill_proc()
+        elif sys.argv[1] == 'restart':
+            kill_proc()
+            subprocess.Popen([sys.executable, sys.argv[0]])
     else:
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s')
         loop = asyncio.get_event_loop()
