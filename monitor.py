@@ -38,73 +38,74 @@ logger.addHandler(file_handler)
 
 @dataclass
 class TaskControl:
-	task: asyncio.Task
+    task: asyncio.Task
 
-	def __call__(self, *args) -> None:
-		self.task.cancel()
+    def __call__(self, *args) -> None:
+        self.task.cancel()
 
 async def main() -> None:
-	with open('.pid', 'w') as fout:
-		fout.write(str(os.getpid()))
-	task = asyncio.create_task(boostrap_main())
-	signal.signal(SIGINT, TaskControl(task))
-	await asyncio.wait([task])
+    with open('.pid', 'w') as fout:
+        fout.write(str(os.getpid()))
+    task = asyncio.create_task(boostrap_main())
+    signal.signal(SIGINT, TaskControl(task))
+    await asyncio.wait([task])
 
 async def init() -> None:
-	if not os.path.exists('local.db'):
-		async with aiosqlite.connect('local.db') as db:
-			await db.execute('''CREATE TABLE "current_process" (
-											"hash"	TEXT,
-											PRIMARY KEY("hash")
-							) WITHOUT ROWID;''')
-			await db.execute('''CREATE TABLE "process_record" (
-								"process"	TEXT,
-								"timestamp"	INTEGER,
-								"path"	TEXT
-							);''')
-			await db.commit()
-		logger.info('Initialize successfully')
+    if not os.path.exists('local.db'):
+        async with aiosqlite.connect('local.db') as db:
+            await db.execute('''CREATE TABLE "current_process" (
+                                            "hash"	TEXT,
+                                            PRIMARY KEY("hash")
+                            ) WITHOUT ROWID;''')
+            await db.execute('''CREATE TABLE "process_record" (
+                                "process"	TEXT,
+                                "timestamp"	INTEGER,
+                                "path"	TEXT
+                            );''')
+            await db.commit()
+        logger.info('Initialize successfully')
 
 async def boostrap_main() -> None:
-	await init()
-	await monitor(True)
-	while True:
-		try:
-			await monitor()
-			logger.info('Success')
-		except:
-			logger.exception('Got unexcept exception in main thread, ignored.')
-		finally:
-			await asyncio.sleep(60)
+    await init()
+    await monitor(True)
+    while True:
+        try:
+            await monitor()
+            logger.info('Success')
+        except:
+            logger.exception('Got unexcept exception in main thread, ignored.')
+        finally:
+            await asyncio.sleep(60)
 
 async def monitor(init: bool=False) -> None:
-	conn = await aiosqlite.connect('local.db')
-	if init:
-		await conn.execute("DELETE FROM `current_process`")
-		await conn.commit()
-	for process in psutil.process_iter():
-		try:
-			#print(process.name(), process.pid, process.exe(), process.create_time())
-			h = hashlib.sha256(f'{process.pid}{int(process.create_time())}'.encode()).hexdigest()
-			cur = await conn.execute(f"SELECT * FROM `current_process` WHERE `hash` = ?", (h,))
-			if await cur.fetchone() is None:
-				await conn.execute("INSERT INTO `current_process` (`hash`) VALUES (?)", (h,))
-				await conn.execute("INSERT INTO `process_record` (`process`, `timestamp`, `path`) VALUES (?, ?, ?)", (process.name(), int(process.create_time()), process.exe()))
-				logger.debug('Insert new process %s(%d)[%s]', process.name(), process.pid, process.exe())
-				#await conn.commit()
-			await cur.close()
-		except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-			pass
-	await conn.commit()
-	await conn.close()
+    conn = await aiosqlite.connect('local.db')
+    if init:
+        await conn.execute("DELETE FROM `current_process`")
+        await conn.commit()
+    for process in psutil.process_iter():
+        try:
+            #print(process.name(), process.pid, process.exe(), process.create_time())
+            h = hashlib.sha256(f'{process.pid}{int(process.create_time())}'.encode()).hexdigest()
+            cur = await conn.execute(f"SELECT * FROM `current_process` WHERE `hash` = ?", (h,))
+            if await cur.fetchone() is None:
+                await conn.execute("INSERT INTO `current_process` (`hash`) VALUES (?)", (h,))
+                await conn.execute("INSERT INTO `process_record` (`process`, `timestamp`, `path`) VALUES (?, ?, ?)",
+                                    (process.name(), int(process.create_time()), process.exe()))
+                logger.debug('Insert new process %s(%d)[%s]', process.name(), process.pid, process.exe())
+                #await conn.commit()
+            await cur.close()
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+            pass
+    await conn.commit()
+    await conn.close()
 
 if __name__ == "__main__":
-	if len(sys.argv) > 1 and sys.argv[1] == 'stop':
-		with open('.pid') as fin:
-			os.kill(int(fin.read()), 2)
-	else:
-		logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s')
-		loop = asyncio.get_event_loop()
-		#loop.set_debug(True)
-		loop.run_until_complete(main())
-		loop.close()
+    if len(sys.argv) > 1 and sys.argv[1] == 'stop':
+        with open('.pid') as fin:
+            os.kill(int(fin.read()), 2)
+    else:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s')
+        loop = asyncio.get_event_loop()
+        #loop.set_debug(True)
+        loop.run_until_complete(main())
+        loop.close()
