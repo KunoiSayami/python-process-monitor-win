@@ -25,6 +25,7 @@ import signal
 import sys
 from signal import SIGINT
 import subprocess
+from configparser import ConfigParser
 
 import aiosqlite
 import aiohttp
@@ -44,6 +45,17 @@ logger.addHandler(file_handler)
 async def main() -> None:
     with open('.pid', 'w') as fout:
         fout.write(str(os.getpid()))
+    config = ConfigParser()
+    if config.read('config.ini'):
+        url = config.get('server', 'url', fallback=None)
+        if url is not None:
+            try:
+                if await update_self(url):
+                    logger.info('Find new version!')
+                else:
+                    logger.info('Check update successful')
+            except:
+                logger.exception('Exception occurred during')
     task = asyncio.create_task(boostrap_main())
     signal.signal(SIGINT, TaskControl(task))
     await asyncio.wait([task])
@@ -64,7 +76,7 @@ async def init() -> None:
         logger.info('Initialize successfully')
 
 
-async def update_self(remote_url: str) -> None:
+async def update_self(remote_url: str) -> bool:
     async with aiofiles.open('app.version') as fin:
         current_version = await fin.read()
         async with aiohttp.ClientSession(raise_for_status=True) as session:
@@ -72,8 +84,10 @@ async def update_self(remote_url: str) -> None:
                 v = RemoteVersion(await rep.json())
                 if v.version != current_version:
                     await v.download(session, 'monitor.py')
-                if v.need_restart:
-                    await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
+                    if v.need_restart:
+                        await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
+                        return True
+                return False
 
 
 async def boostrap_main() -> None:
@@ -119,7 +133,11 @@ if __name__ == "__main__":
         if sys.argv[1] == 'stop':
             kill_proc()
         elif sys.argv[1] == 'restart':
-            kill_proc()
+            logger.info('Requesting restart')
+            try:
+                kill_proc()
+            except OSError:
+                pass
             subprocess.Popen([sys.executable, sys.argv[0]])
     else:
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s')
