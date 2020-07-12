@@ -48,7 +48,7 @@ async def main() -> None:
     config = ConfigParser()
     if config.read('config.ini'):
         url = config.get('server', 'url', fallback=None)
-        if url is not None:
+        if url is not None and len(url):
             try:
                 if await update_self(url):
                     logger.info('Find new version!')
@@ -126,7 +126,7 @@ async def monitor(init: bool=False) -> None:
 
 def kill_proc() -> None:
     with open('.pid') as fin:
-        os.kill(int(fin.read()), 2)
+        os.kill(int(fin.read()), SIGINT)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
