@@ -19,28 +19,45 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import asyncio
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List, Tuple, TypeVar
 
 import aiohttp
 import aiofiles
 
+mixTypes = TypeVar('mixTypes', str, int, bool, List[Tuple[str, str]])
+
+
+
+
 @dataclass(init=False)
 class RemoteVersion:
+    '''
+    Description of RemoteVersion object:
+
+    Network object should use valid json format.
+    And should use following format:
+    {
+        'version': int,
+        'urls': [[str, str], [str, str], ...]
+        'need_restart': bool
+    }
+    '''
     version: int
-    update_url: str
+    update_urls: List[Tuple[str, str]]
     need_restart: bool
 
-    def __init__(self, rep: Dict[str, str]) -> None:
+    def __init__(self, rep: Dict[str, mixTypes]) -> None:
         self.version = int(rep['version'])
-        self.update_url = rep['url']
+        self.update_urls = rep['urls']
         self.need_restart = bool(rep['need_restart'])
 
-    async def download(self, session: aiohttp.ClientSession, file_name: str) -> None:
-        async with session.post(self.update_url) as req, aiofiles.open(file_name, 'wb') as fout:
-            for chunk in req.iter(chunk=1024):
-                if not chunk:
-                    break
-                await fout.write(chunk)
+    async def download(self, session: aiohttp.ClientSession) -> None:
+        for url, file_name in self.update_urls:
+            async with session.post(url) as req, aiofiles.open(file_name, 'wb') as fout:
+                for chunk in req.iter(chunk=1024):
+                    if not chunk:
+                        break
+                    await fout.write(chunk)
 
 @dataclass
 class TaskControl:

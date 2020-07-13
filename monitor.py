@@ -26,6 +26,7 @@ import sys
 from signal import SIGINT
 import subprocess
 from configparser import ConfigParser
+from typing import final
 
 import aiosqlite
 import aiohttp
@@ -78,12 +79,12 @@ async def init() -> None:
 
 async def update_self(remote_url: str) -> bool:
     async with aiofiles.open('app.version') as fin:
-        current_version = await fin.read()
+        current_version = int(await fin.read())
         async with aiohttp.ClientSession(raise_for_status=True) as session:
             async with session.get(remote_url) as rep:
                 v = RemoteVersion(await rep.json())
                 if v.version != current_version:
-                    await v.download(session, 'monitor.py')
+                    await v.download(session)
                     if v.need_restart:
                         await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
                         return True
@@ -143,5 +144,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s')
         loop = asyncio.get_event_loop()
         #loop.set_debug(True)
-        loop.run_until_complete(main())
-        loop.close()
+        try:
+            loop.run_until_complete(main())
+        finally:
+            loop.close()
