@@ -26,7 +26,6 @@ import sys
 from signal import SIGINT
 import subprocess
 from configparser import ConfigParser
-from typing import final
 
 import aiosqlite
 import aiohttp
@@ -80,15 +79,17 @@ async def init() -> None:
 async def update_self(remote_url: str) -> bool:
     async with aiofiles.open('app.version') as fin:
         current_version = int(await fin.read())
-        async with aiohttp.ClientSession(raise_for_status=True) as session:
-            async with session.get(remote_url) as rep:
-                v = RemoteVersion(await rep.json())
-                if v.version != current_version:
-                    await v.download(session)
-                    if v.need_restart:
-                        await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
-                        return True
-                return False
+    async with aiohttp.ClientSession(raise_for_status=True) as session:
+        async with session.get(remote_url) as rep:
+            v = RemoteVersion(await rep.json())
+            if v.version != current_version:
+                await v.download(session)
+                async with aiofiles.open('app.version', 'w') as fout:
+                    await fout.write(v.version)
+                if v.need_restart:
+                    await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
+                    return True
+            return False
 
 
 async def boostrap_main() -> None:

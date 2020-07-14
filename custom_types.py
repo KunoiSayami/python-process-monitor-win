@@ -37,7 +37,7 @@ class RemoteVersion:
     Network object should use valid json format.
     And should use following format:
     {
-        'version': int,
+        'version': unsigned int,
         'urls': [[str, str], [str, str], ...]
         'need_restart': bool
     }
