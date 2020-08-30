@@ -1,2 +1,8 @@
 [server]
 url = 
+
+[upload]
+enable = false
+url = 
+user = 
+password = 

@@ -50,12 +50,12 @@ async def main() -> None:
         url = config.get('server', 'url', fallback=None)
         if url is not None and len(url):
             try:
-                if await update_self(url):
-                    logger.info('Find new version!')
+                if await upgrade_self(url):
+                    logger.info('Found new version!')
                 else:
                     logger.info('Check update successful')
             except:
-                logger.exception('Exception occurred during')
+                logger.exception('Exception occurred during update')
     task = asyncio.create_task(boostrap_main())
     signal.signal(SIGINT, TaskControl(task))
     await asyncio.wait([task])
@@ -76,13 +76,13 @@ async def init() -> None:
         logger.info('Initialize successfully')
 
 
-async def update_self(remote_url: str) -> bool:
+async def upgrade_self(remote_url: str) -> bool:
     async with aiofiles.open('app.version') as fin:
         current_version = int(await fin.read())
     async with aiohttp.ClientSession(raise_for_status=True) as session:
         async with session.get(remote_url) as rep:
             v = RemoteVersion(await rep.json())
-            if v.version != current_version:
+            if v.version > current_version:
                 await v.download(session)
                 async with aiofiles.open('app.version', 'w') as fout:
                     await fout.write(v.version)
@@ -90,7 +90,6 @@ async def update_self(remote_url: str) -> bool:
                     await asyncio.create_subprocess_exec(sys.executable, sys.argv[0], 'restart')
                     return True
             return False
-
 
 async def boostrap_main() -> None:
     await init()
@@ -122,7 +121,7 @@ async def monitor(init: bool=False) -> None:
                 #await conn.commit()
             await cur.close()
         except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-            pass
+            continue
     await conn.commit()
     await conn.close()
 
@@ -147,5 +146,6 @@ if __name__ == "__main__":
         #loop.set_debug(True)
         try:
             loop.run_until_complete(main())
+            file_handler.close()
         finally:
             loop.close()
